@@ -11,7 +11,7 @@
 ### Deployment Strategy
 - **Platform**: Run directly on Proxmox host (no VM)
 - **Containerization**: Docker containers for each component
-- **Storage**: Direct access to 18TB local storage
+- **Storage**: Direct access to 13TB local storage
 - **Target**: Single-machine deployment with maximum I/O performance
 
 ### Container Architecture
@@ -28,9 +28,9 @@
 ```
 
 **Container Responsibilities:**
-- **Scraper**: Discovers new dumps, monitors dump.wikimedia.org
+- **Scraper**: Discovers new dumps via Wikimedia Enterprise Snapshot API (https://enterprise.wikimedia.com/docs/snapshot/)
 - **Downloader**: Handles file downloads with resume capability
-- **Creator**: Generates torrents and groupings
+- **Creator**: Generates torrents, readmes, and groupings
 - **Seeder**: Persistent torrent seeding (`restart: unless-stopped`)
 - **Sharing**: Uploads to torrent sites (Academic Torrents, Internet Archive, RSS, custom sites)
 - **Web UI**: Configuration dashboard and monitoring
@@ -65,9 +65,10 @@
 
 ### Download Protection
 - **Resume capability**: HTTP range requests for interrupted downloads
-- **Chunked downloads**: 100MB segments with individual verification
-- **Real-time verification**: Compare against Wikimedia checksums during download
-- **Automatic retry**: Re-download failed chunks (max 3 attempts per chunk)
+- **Mirror Utilization**: Utilize avaliable Wikimedia Dump mirrors along with wikimedia.org
+- **Chunked downloads**: download in 100MB segments 
+- **File verification**: Compare against Wikimedia checksums after download
+- **Automatic retry**: Re-download failed files (max 3 attempts per file)
 
 ### Upload Error Handling
 - **Post-upload verification**: Check Internet Archive file integrity
@@ -77,10 +78,11 @@
 
 ### Integrity Verification
 - **Checksum validation**: Verify all files against official Wikimedia checksums
-- **Torrent integrity**: Include CHECKSUMS.txt and SOURCE_INFO.txt in every torrent
-- **Source archival**: Archive dump status pages to archive.ph for long-term verification
+- **Torrent integrity**: Include checksums.txt (with file source and archive links) in every torrent
+- **Source archival**: Archive dump status pages to archive.ph for long-term verification via archive.ph API
 
 ## Torrent Strategy
+Utilize webseeds from wikimedia and other mirrors, along with Internet Archive
 
 ### Grouping System
 Create multiple logical groupings using hard links (no file duplication):
@@ -121,14 +123,14 @@ Based on Wikipedia article statistics from https://commons.wikimedia.org/wiki/Da
 ```
 torrent_name/
 ├── [dump_files...]
-├── CHECKSUMS.txt
-└── SOURCE_INFO.txt
+└── checksums.txt
 ```
 
-**CHECKSUMS.txt format:**
+**checksums.txt format:**
 ```
 # WikiSeed Torrent Checksums - June 2025
-# Generated: 2025-06-15 14:30 UTC
+# Torrent Generated: 2025-06-15 14:30 UTC
+# https://github.com/WikiSeedProject/WikiSeed
 # Verified against official Wikimedia checksums
 
 SHA1(enwiki-20250601-pages-articles.xml.bz2)= abc123...
@@ -143,28 +145,27 @@ JSON Archive: https://archive.ph/def456
 
 ### Sharing Sites
 - **Academic Torrents**: Primary academic distribution
-- **Internet Archive**: File uploads for archival
+- **Internet Archive**: File uploads for archival, also used as webseed for torrent
+- **Wikimedia Torrent List**: Edit and update https://meta.wikimedia.org/wiki/Data_dump_torrents
 - **RSS feeds**: For automated discovery
 - **Custom sites**: User-configurable with custom APIs
-- **Pirate Bay**: Optional (user-enabled)
 
 ### Upload Process
 1. Create torrent file
 2. Begin seeding locally
-3. Upload to configured sharing sites
-4. Archive source pages to archive.ph
-5. Monitor torrent health across sites
+3. Upload to configured sharing sites via API
+4. Monitor torrent health across sites
 
 ## Monitoring & Metrics
 
 ### Self-Contained Monitoring
 - **Database storage**: All metrics in PostgreSQL
-- **Web UI dashboard**: Built-in charts and monitoring
-- **No external dependencies**: Complete system within containers
+- **Web UI dashboard**: Built-in charts and monitoring for private web UI
+- **Public Status Page**: Intergrate with cloud based status page provider and show status on https://wikiseed.app. everything else is private (LAN) web UI
 
 ### Persistent Metrics
 - **Preservation stats**: Total data, unique projects, files preserved
-- **Torrent health**: Seeders, peers, upload ratios per torrent
+- **Torrent health**: Seeders, peers, leachers 
 - **System performance**: Download speeds, storage usage, success rates
 - **Operation logs**: Structured logging with 90-day retention
 
@@ -196,7 +197,7 @@ JSON Archive: https://archive.ph/def456
 ## Future-Proofing
 
 ### Adaptive Systems
-- **Auto-discovery**: Weekly scans of dump.wikimedia.org for new projects
+- **Auto-discovery**: Weekly scans via API of dump.wikimedia.org for new projects
 - **Format agnostic**: Download and preserve any file format Wikimedia provides
 - **Silent operation**: Automatically include new projects without user intervention
 - **Dynamic groupings**: Automatically include new projects in torrent groupings
@@ -205,9 +206,10 @@ JSON Archive: https://archive.ph/def456
 - **Automatic migration**: Database schema updates handled during WikiSeed updates
 - **Version management**: Clean upgrade path for WikiSeed installations
 - **No compatibility mode**: Forward-only approach leveraging Wikimedia's stable structure
+- **Import/Export Config**: Automated backing up of config files
 
 ### Language Statistics
-- **Monthly refresh**: Update language tiers from Wikipedia statistics at month start
+- **Monthly refresh**: Update language tiers from Wikimedia statistics (https://commons.wikimedia.org/wiki/Data:Wikipedia_statistics/data.tab) at month start
 - **Configurable discovery**: Adjustable scan frequency for new projects
 - **Cache strategy**: Cache statistics locally between monthly updates
 
@@ -215,7 +217,7 @@ JSON Archive: https://archive.ph/def456
 
 **"Everything" Template** (recommended defaults):
 - All grouping strategies enabled
-- All sharing sites enabled (except Pirate Bay)
+- All sharing sites enabled 
 - Conservative storage thresholds (85% cleanup, 90% pause)
 - No bandwidth limits
 - Weekly project discovery
@@ -238,8 +240,8 @@ JSON Archive: https://archive.ph/def456
 
 ### Infrastructure
 - **Deployment**: Docker containers on Proxmox host
-- **Storage**: Direct mount to 18TB local storage
-- **Networking**: Container networking with port exposure for web UI
+- **Storage**: Direct mount to 13TB local storage
+- **Networking**: Container networking with port exposure for local web UI and webhooks(?) for public status page
 - **Persistence**: Docker volumes for database and configuration
 
 ## Development Phases
