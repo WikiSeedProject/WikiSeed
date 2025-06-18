@@ -1,7 +1,7 @@
 # WikiSeed Project Context
 
 ## Mission
-Preserve Wikimedia database dumps (non-English projects prioritized) via monthly torrents with Internet Archive webseeds. Addresses gap: IA dumps 8+ months old, Academic Torrents only has English Wikipedia.
+Preserve all Wikimedia database dumps (with non-English non-Wikipedia projects prioritized) via monthly torrents with Internet Archive webseeds.
 
 ## Architecture
 **Single-machine Docker deployment** on Proxmox host with 13TB storage
@@ -14,7 +14,7 @@ Preserve Wikimedia database dumps (non-English projects prioritized) via monthly
 - **Database**: SQLite for tracking and metrics
 
 ## Storage Management
-- **Thresholds**: 95% cleanup trigger, 90% queue pause, 5GB safety margin
+- **Thresholds**: 95% cleanup trigger & queue pause, 10GB safety margin
 - **Golden Rule**: Never delete only copy of any project+language
 - **Organization**: Hard links for multi-torrent inclusion without duplication
 - **Cleanup Priority**: Multiple copies → large projects with many seeds → older dumps
@@ -41,14 +41,14 @@ Wikimedia-Complete-YYYY-MM/
 ```
 
 **Workflow:**
-1. Wait for all monthly dumps (4-6 days)
+1. Wait for all monthly dumps (4-6 days after first of month)
 2. Upload each file individually to Internet Archive
 3. Create single torrent with IA URLs as webseeds
 4. Upload torrent to Academic Torrents
 5. Begin seeding
 
 ## Distribution
-- **Priority**: Academic Torrents (torrent) → Internet Archive (files)
+- **Priority**: Internet Archive (files) → Academic Torrents (torrent)
 - **Tracking**: DHT queries for real torrent health stats
 - **Retry**: Exponential backoff for failed uploads
 
