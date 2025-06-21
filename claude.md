@@ -4,7 +4,7 @@
 Preserve all Wikimedia database dumps (with non-English non-Wikipedia projects prioritized) via monthly torrents with Internet Archive webseeds.
 
 ## Architecture
-**Single-machine Docker deployment** on Proxmox host with 13TB storage
+**Single-machine Docker deployment** on Proxmox host
 - **Scraper**: Discovers dumps via Wikimedia Enterprise API
 - **Downloader**: Chunked downloads (100MB) with resume capability  
 - **Creator**: Generates single monthly torrent with IA webseeds
