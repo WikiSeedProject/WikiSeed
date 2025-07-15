@@ -279,7 +279,7 @@ const FileSizeCalculator = () => {
                 ))}
               </tbody>
             </table>
-          </diva>
+          </div>
         </div>
       )}
 
