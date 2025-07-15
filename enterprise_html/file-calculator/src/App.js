@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { Calculator, FileText, Download, Trash2 } from 'lucide-react';
+import { Calculator, FileText, Download, Trash2, Copy, ExternalLink } from 'lucide-react';
 
 const FileSizeCalculator = () => {
   const [input, setInput] = useState('');
   const [files, setFiles] = useState([]);
+  const [baseUrl, setBaseUrl] = useState('https://dumps.wikimedia.org/other/enterprise_html/runs/20250320/');
 
   // Parse different file size formats
   const parseSize = (sizeStr) => {
@@ -54,50 +55,38 @@ const FileSizeCalculator = () => {
 
       let fileName = '';
       let fileSize = '';
+      let fileUrl = '';
 
-      // Pattern 1: Wikimedia-style HTML directory listing
-      // <a href="filename">filename</a> 20-Mar-2025 08:30 1384
-      let match = line.match(/<a[^>]*href="([^"]+)"[^>]*>([^<&]+)(?:\.\.\.)?(?:&gt;)?<\/a>\s+[\d-]+\s+[\d:]+\s+([\d,]+)/);
-      if (match) {
-        fileName = match[1].trim();
-        fileSize = match[3].trim();
-        // Handle truncated filenames (the display name might be cut off)
-        if (match[2].includes('...')) {
-          fileName = match[1]; // Use href value for full filename
-        }
+      // Extract href value and file size from HTML
+      const hrefMatch = line.match(/href="([^"]+)"/);
+      const sizeMatch = line.match(/(\d+)$/); // File size at end of line
+
+      if (hrefMatch && sizeMatch) {
+        fileUrl = hrefMatch[1].trim();
+        fileName = fileUrl;
+        fileSize = sizeMatch[1].trim();
       }
 
-      // Pattern 2: General HTML directory listing with size units
-      if (!match) {
-        match = line.match(/<a[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>\s+[\d-]+\s+[\d:]+\s+([\d.,]+\s*[KMGTPE]?B?)/i);
-        if (match) {
-          fileName = match[2].trim();
-          fileSize = match[3].trim();
-        }
-      }
-
-      // Pattern 3: Simple space-separated (e.g., "file.txt 1.2M" or "1.2M file.txt")
-      if (!match) {
+      // Fallback: try other patterns if HTML parsing failed
+      if (!fileUrl) {
         const parts = line.trim().split(/\s+/);
         if (parts.length >= 2) {
-          // Check if last part looks like a size
-          if (parts[parts.length - 1].match(/^[\d.,]+\s*[KMGTPE]?B?$/i)) {
+          if (parts[parts.length - 1].match(/^[\d.,]+$/)) {
             fileSize = parts[parts.length - 1];
             fileName = parts.slice(0, -1).join(' ');
-          } else if (parts[0].match(/^[\d.,]+\s*[KMGTPE]?B?$/i)) {
-            fileSize = parts[0];
-            fileName = parts.slice(1).join(' ');
+            fileUrl = fileName;
           }
         }
       }
 
-      if (fileName && fileSize) {
+      if (fileName && fileSize && fileUrl) {
         const sizeInBytes = parseSize(fileSize);
         if (sizeInBytes > 0) {
           newFiles.push({
             name: fileName,
             size: sizeInBytes,
-            originalSize: fileSize
+            originalSize: fileSize,
+            url: fileUrl
           });
         }
       }
@@ -107,7 +96,47 @@ const FileSizeCalculator = () => {
     setInput('');
   };
 
-  // Manual file entry
+  // Generate full URLs
+  const generateUrls = () => {
+    if (!baseUrl) return [];
+    const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+    return files.map(file => cleanBaseUrl + file.url);
+  };
+
+  // Copy URLs to clipboard
+  const copyUrls = () => {
+    const urls = generateUrls().join('\n');
+    navigator.clipboard.writeText(urls);
+  };
+
+  // Export for download managers
+  const exportForDownloadManager = (format) => {
+    const urls = generateUrls();
+    let content = '';
+
+    switch (format) {
+      case 'plain':
+        content = urls.join('\n');
+        break;
+      case 'wget':
+        content = urls.map(url => `wget "${url}"`).join('\n');
+        break;
+      case 'curl':
+        content = urls.map(url => `curl -O "${url}"`).join('\n');
+        break;
+      case 'aria2':
+        content = urls.join('\n');
+        break;
+    }
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `download-urls-${format}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
   const addManualFile = () => {
     const name = prompt('Enter file name:');
     const size = prompt('Enter file size (e.g., 1.5GB, 500MB, 1024KB):');
@@ -158,6 +187,19 @@ const FileSizeCalculator = () => {
 
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-2">
+            Base URL (for download links)
+          </label>
+          <input
+            type="text"
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder="https://example.com/path/"
+            className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-4"
+          />
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
             Paste Directory Listing
           </label>
           <textarea
@@ -186,6 +228,58 @@ const FileSizeCalculator = () => {
           </div>
         </div>
       </div>
+
+      {/* URL Export Section */}
+      {files.length > 0 && (
+        <div className="bg-green-50 rounded-lg p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+            <Download className="text-green-600" />
+            Download URLs ({files.length} files)
+          </h2>
+
+          <div className="mb-4">
+            <div className="flex flex-wrap gap-2 mb-3">
+              <button
+                onClick={copyUrls}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                <Copy size={16} />
+                Copy URLs
+              </button>
+              <button
+                onClick={() => exportForDownloadManager('plain')}
+                className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+              >
+                Export Plain
+              </button>
+              <button
+                onClick={() => exportForDownloadManager('wget')}
+                className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700"
+              >
+                Export wget
+              </button>
+              <button
+                onClick={() => exportForDownloadManager('curl')}
+                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+              >
+                Export curl
+              </button>
+              <button
+                onClick={() => exportForDownloadManager('aria2')}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+              >
+                Export aria2c
+              </button>
+            </div>
+
+            <div className="bg-white border border-gray-300 rounded-md p-3 max-h-40 overflow-y-auto">
+              <pre className="text-sm text-gray-700 whitespace-pre-wrap">
+                {generateUrls().join('\n')}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Statistics */}
       {files.length > 0 && (
