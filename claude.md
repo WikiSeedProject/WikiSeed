@@ -2,16 +2,16 @@
 
 ## Project Overview
 
-**Goal**: Preserve the entirety of Wikimedia for future generations, with special focus on preserving smaller language projects that are often overlooked by other backup initiatives.
+**Goal**: Preserve the entirety of Wikimedia for future generations.
 
-**Mission**: Ensure at least one copy of every Wikimedia project in every language is preserved and widely distributed through torrent networks.
+**Mission**: Ensure at least one copy of every Wikimedia project in every language is preserved and widely distributed through torrent networks and the Internet Archive.
 
 ## System Architecture
 
 ### Deployment Strategy
-- **Platform**: Run directly on Proxmox host (no VM)
+- **Platform**: Run directly on Ubuntu server vm on Proxmox host
 - **Containerization**: Docker containers for each component
-- **Storage**: Direct access to 18TB local storage
+- **Storage**: Direct access to 18TB local storage (configurable)
 - **Target**: Single-machine deployment with maximum I/O performance
 
 ### Container Architecture
@@ -29,12 +29,12 @@
 
 **Container Responsibilities:**
 - **Controller**: Job orchestration, workflow management, resource coordination
-- **Scraper**: Wiki discovery via wikistats.wmcloud.org, dump finding via dumps.wikimedia.org
-- **Downloader**: File downloads with resume capability and mirror utilization
-- **Creator**: Torrent generation, text file creation (CHECKSUMS.txt, SOURCE_INFO.txt), groupings
-- **Seeder**: Persistent torrent seeding (`restart: unless-stopped`)
+- **Scraper**: Wiki discovery via https://commons.wikimedia.org/w/api.php?action=sitematrix&format=json, find dumps via dumps.wikimedia.org (or mirror)
+- **Downloader**: File downloads with resume capability and mirror utilization, verifies checksum
+- **Creator**: Torrent generation, text file creation (checksums.txt, sources.txt)
+- **Seeder**: Persistent torrent seeding
 - **Sharing**: Uploads to torrent sites (Academic Torrents, Internet Archive, RSS, custom sites)
-- **Web UI**: Configuration dashboard and monitoring
+- **wikiseed.app**: Public status page; will be hosted in cloud
 - **Database**: PostgreSQL for tracking, metrics, and state
 
 ## Storage & Download Management
@@ -42,10 +42,10 @@
 ### Storage Strategy
 - **Auto-detection**: Monitor filesystem usage in real-time
 - **Storage thresholds**:
-  - Queue pause: 90% (stop new downloads)
+  - Queue pause: 90% (finish active downloads, stop new downloads)
   - Cleanup trigger: 85% (start cleanup process)
-  - Safety margin: 5GB always free
-- **File organization**: Hard links for multi-torrent inclusion without duplication
+  - Safety margin: 5GB always free (hard stop active downloads)
+- **File organization**: Same as torrent file orgnization
 
 ### Download Logic
 - **Processing**: FIFO (First In, First Out) as dumps become available
@@ -88,73 +88,65 @@ Create multiple logical groupings using hard links (no file duplication):
 
 #### Temporal Groupings
 - **Monthly**: `"Wikimedia Complete - [Month Year]"` (current dumps)
-- **Quarterly**: `"Wikimedia Q[1-4] [Year]"` (quarterly collections)
-- **History dumps**: `"Wikimedia Complete with History - [H1/H2] [Year]"` (twice yearly)
-
-#### Project-Based Groupings
-Auto-discovered from dump.wikimedia.org:
-- `"Wikipedia All Languages - [Month Year]"`
-- `"Wiktionary All Languages - [Month Year]"`
-- `"Wikibooks All Languages - [Month Year]"`
-- `"Wikinews All Languages - [Month Year]"`
-- `"Wikiquote All Languages - [Month Year]"`
-- `"Wikisource All Languages - [Month Year]"`
-- `"Wikiversity All Languages - [Month Year]"`
-- `"Wikivoyage All Languages - [Month Year]"`
-
-#### Language-Based Groupings
-Based on Wikipedia article statistics from https://commons.wikimedia.org/wiki/Data:Wikipedia_statistics/data.tab
-
-**Individual Languages:**
-- `"[lang_code] ([English Name] - [Native Name]) Wikimedia Complete - [Month Year]"`
-- Examples:
-  - `"en (English) Wikimedia Complete - June 2025"`
-  - `"es (Spanish - Español) Wikimedia Complete - June 2025"`
-  - `"zh (Chinese - 中文) Wikimedia Complete - June 2025"`
-
-**Language Tiers:**
-- **Major Languages**: 500,000+ articles
-- **Medium Languages**: 50,000-499,999 articles  
-- **Small Languages**: <50,000 articles
-- Named as: `"Major/Medium/Small Languages Wikimedia - [Month Year]"`
+- **History dumps**: `"Wikimedia Complete with History - [Year]"` (Once yearly)
 
 ### Torrent Content Structure
 ```
 torrent_name/
-├── [dump_files...]
-├── CHECKSUMS.txt
-└── SOURCE_INFO.txt
+├── wikipedia/                  #project
+│   ├── en                      #language
+│    ── ├── [dump_files]
+├── checksums.txt
+├── legal.txt (based on https://dumps.wikimedia.org/legal.html)
+└── sources.txt
 ```
 
-**CHECKSUMS.txt format:**
+**checksums.txt format:**
 ```
-# WikiSeed Torrent Checksums - June 2025
+# WikiSeed Torrent Dump Checksums - June 2025
+# https://wikiseed.app
 # Generated: 2025-06-15 14:30 UTC
-# Verified against official Wikimedia checksums
+# WikiSeed version: 1.0
+# WikiSeed GitHub: https://github.com/WikiSeedProject/WikiSeed
 
 SHA1(enwiki-20250601-pages-articles.xml.bz2)= abc123...
 MD5(enwiki-20250601-pages-articles.xml.bz2)= def456...
+```
+
+**sources.txt format:**
+```
+# WikiSeed Torrent Dump Sources - June 2025
+# https://wikiseed.app
+# Generated: 2025-06-15 14:30 UTC
+# WikiSeed version: 1.0
+# WikiSeed GitHub: https://github.com/WikiSeedProject/WikiSeed
+
+Project: Wikipedia
+Languauge: en
 Source: https://dumps.wikimedia.org/enwiki/20250601/
-Archive: https://archive.ph/abc123
+Archive Source Page: https://archive.ph/abc123
+Mirror used? Y/N
+Mirror Source: https://dumps.wikimedia.your.org/enwiki/20220820/
+Archive Mirror Source Page: https://archive.ph/hij789
 Status JSON: https://dumps.wikimedia.org/enwiki/20250601/dumpstatus.json
-JSON Archive: https://archive.ph/def456
+Archived Stauts JSON: https://archive.ph/def456
 ```
 
 ## Distribution Strategy
 
 ### Sharing Sites
-- **Academic Torrents**: Primary academic distribution
-- **Internet Archive**: File uploads for archival
+- **Academic Torrents**: Primary torrent distribution
+- **Internet Archive**: File uploads for archival and webseed
 - **RSS feeds**: For automated discovery
-- **Custom sites**: User-configurable with custom APIs
-- **Pirate Bay**: Optional (user-enabled)
 
-### Upload Process
-1. Create torrent file
-2. Begin seeding locally
-3. Upload to configured sharing sites
-4. Archive source pages to archive.ph
-5. Monitor torrent health across sites
+### Archive Process
+1. Download all dumps
+2. Compile files into torrent archive
+3. Upload torrent archive to Internet Archive
+4. Create torrent with IA as web seed
+5. Begin seeding locally
+6. Upload torrent file to configured sharing sites
+7. Monitor torrent health across sites
 
 ## Monitoring & Metrics
 
@@ -165,8 +157,8 @@ JSON Archive: https://archive.ph/def456
 
 ### Persistent Metrics
 - **Preservation stats**: Total data, unique projects, files preserved
-- **Torrent health**: Seeders, peers, upload ratios per torrent
-- **System performance**: Download speeds, storage usage, success rates
+- **Torrent health**: DHT, Seeders, peers, upload ratios per torrent
+- **System performance**: Download/upload speeds, storage usage
 - **Operation logs**: Structured logging with 90-day retention
 
 ### Reporting
@@ -176,18 +168,13 @@ JSON Archive: https://archive.ph/def456
 
 ## Configuration Management
 
-### Dual Configuration System
+### Configuration System
 - **Config files**: YAML configuration for all settings
-- **Web UI**: Live editing with immediate validation
 - **Easy changes**: All settings adjustable without reinstallation
 
 ### Configuration Categories
-1. **Storage Management**: Thresholds, cleanup rules, safety margins
-2. **Language Configuration**: Article count tiers, grouping preferences
-3. **Torrent Groupings**: Enable/disable each grouping strategy
-4. **Sharing Sites**: Platform selection and custom site APIs
-5. **Performance**: Bandwidth limits, scheduling, resource allocation
-6. **Discovery**: New project detection frequency and handling
+**Storage Management**: Thresholds, cleanup rules, safety margins
+**Performance**: Bandwidth limits, scheduling, resource allocation
 
 ### Change Management
 - **Graceful restarts**: Complete pending operations before container restart
@@ -197,31 +184,13 @@ JSON Archive: https://archive.ph/def456
 ## Future-Proofing
 
 ### Adaptive Systems
-- **Auto-discovery**: Weekly scans of dump.wikimedia.org for new projects
+- **Auto-discovery**: Weekly scans of https://wikistats.wmcloud.org/wikimedias_wiki.php for new projects
 - **Format agnostic**: Download and preserve any file format Wikimedia provides
 - **Silent operation**: Automatically include new projects without user intervention
-- **Dynamic groupings**: Automatically include new projects in torrent groupings
 
 ### Update Management
 - **Automatic migration**: Database schema updates handled during WikiSeed updates
 - **Version management**: Clean upgrade path for WikiSeed installations
-- **No compatibility mode**: Forward-only approach leveraging Wikimedia's stable structure
-
-### Language Statistics
-- **Monthly refresh**: Update language tiers from Wikipedia statistics at month start
-- **Configurable discovery**: Adjustable scan frequency for new projects
-- **Cache strategy**: Cache statistics locally between monthly updates
-
-## Default Configuration Template
-
-**"Everything" Template** (recommended defaults):
-- All grouping strategies enabled
-- All sharing sites enabled (except Pirate Bay)
-- Conservative storage thresholds (85% cleanup, 90% pause)
-- No bandwidth limits
-- Weekly project discovery
-- Maximum preservation coverage
-- 90-day log retention
 
 ## Technical Stack
 
@@ -240,8 +209,7 @@ JSON Archive: https://archive.ph/def456
 
 ### Infrastructure
 - **Deployment**: Docker containers on Proxmox host
-- **Storage**: Direct mount to 13TB local storage
-- **Networking**: Container networking with port exposure for web UI
+- **Networking**: Container networking with port exposure for web UI, torrents, downloads
 - **Persistence**: Docker volumes for database and configuration
 
 ## Development Architecture
@@ -314,79 +282,6 @@ tests/
 - **Alembic**: Database migration management
 - **PostgreSQL**: Primary database with JSON support
 
-### Core Database Schema
-
-**Primary Tables:**
-```sql
--- Job queue system for container coordination
-jobs (
-    id SERIAL PRIMARY KEY,
-    type VARCHAR(50) NOT NULL,           -- 'discover_wikis', 'find_dumps', 'download_dump', etc.
-    status VARCHAR(20) NOT NULL,         -- 'pending', 'assigned', 'in_progress', 'completed', 'failed'
-    data JSONB,                          -- Job-specific data and parameters
-    assigned_to VARCHAR(50),             -- Container handling the job
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    retry_count INTEGER DEFAULT 0
-);
-
--- Wiki and project tracking
-wikis (
-    id SERIAL PRIMARY KEY,
-    wiki_code VARCHAR(20) NOT NULL,      -- 'enwiki', 'eswiki', etc.
-    language VARCHAR(10) NOT NULL,       -- 'en', 'es', etc.
-    project_type VARCHAR(20) NOT NULL,   -- 'wikipedia', 'wiktionary', etc.
-    article_count INTEGER,               -- For language tier classification
-    last_updated TIMESTAMP,
-    UNIQUE(wiki_code)
-);
-
--- Dump file tracking
-dumps (
-    id SERIAL PRIMARY KEY,
-    wiki_id INTEGER REFERENCES wikis(id),
-    dump_date DATE NOT NULL,
-    file_name VARCHAR(255) NOT NULL,
-    file_size BIGINT,
-    status VARCHAR(20),                  -- 'available', 'downloaded', 'corrupted', 'quarantined'
-    sha1 VARCHAR(40),
-    md5 VARCHAR(32),
-    download_path VARCHAR(500),
-    created_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(wiki_id, dump_date, file_name)
-);
-
--- Torrent management
-torrents (
-    id SERIAL PRIMARY KEY,
-    torrent_hash VARCHAR(40) UNIQUE,
-    name VARCHAR(255) NOT NULL,
-    creation_date TIMESTAMP DEFAULT NOW(),
-    file_list JSONB,                     -- List of included files
-    grouping_type VARCHAR(50),           -- 'temporal', 'project', 'language', etc.
-    status VARCHAR(20),                  -- 'created', 'seeding', 'uploaded'
-    metadata JSONB                       -- Additional torrent information
-);
-
--- System metrics for monitoring
-metrics (
-    id SERIAL PRIMARY KEY,
-    timestamp TIMESTAMP DEFAULT NOW(),
-    metric_type VARCHAR(50) NOT NULL,    -- 'storage_usage', 'download_speed', etc.
-    value NUMERIC,
-    metadata JSONB
-);
-
--- Configuration management
-settings (
-    id SERIAL PRIMARY KEY,
-    key VARCHAR(100) UNIQUE NOT NULL,
-    value JSONB,
-    category VARCHAR(50),                -- 'storage', 'grouping', 'sharing', etc.
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-```
-
 ### Controller Container Architecture
 
 **Core Responsibilities:**
@@ -410,6 +305,7 @@ settings (
 - `find_dumps`: Check dumps.wikimedia.org for specific wiki dumps
 - `download_dump`: Download specific dump file with mirror utilization
 - `create_torrent`: Generate torrent and text files
+- `upload_ia`: Upload torrent to Internet Archive
 - `start_seeding`: Begin seeding torrent
 - `upload_sharing`: Upload to torrent sites
 
@@ -445,42 +341,6 @@ pending → assigned → in_progress → completed
 6. Creator completes → Creates "start_seeding" and "upload_sharing" jobs
 7. Seeder and Sharing containers pick up respective jobs
 ```
-
-### Database Migration Strategy
-
-**Migration Categories:**
-1. **Schema migrations**: Table structure changes and new tables
-2. **Data migrations**: Transform existing data during upgrades
-3. **Config migrations**: Update configuration format changes
-4. **Index migrations**: Performance optimizations
-
-**Migration Workflow:**
-- **Development**: Auto-apply migrations in dev environment
-- **Production**: Manual migration approval and backup requirement
-- **Rollback capability**: All migrations must be reversible
-- **Version tracking**: Database schema versioning with Alembic
-
-### Development & Testing Foundation
-
-**Database Testing Strategy:**
-- **Unit tests**: Individual model and query testing
-- **Integration tests**: Multi-table workflow testing
-- **Migration tests**: Verify schema changes work correctly
-- **Performance tests**: Query optimization validation
-
-**Development Database Setup:**
-- Docker PostgreSQL container for development
-- Seed data for testing workflows
-- Separate test database for automated testing
-- Database fixtures for consistent test data
-
-**Testing Database:**
-- Isolated test database that resets between test runs
-- Mock data for wikistats and dumps.wikimedia.org responses
-- Automated testing of job queue system
-- Error injection testing for retry logic
-
-### Error Handling & Recovery
 
 **Controller Error Management:**
 - **Job timeout handling**: Detect and reassign stuck jobs
